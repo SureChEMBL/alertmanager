@@ -1,0 +1,6 @@
+build/uideps/*          usr/share/prometheus/alertmanager/ui/lib
+debian/README.templates etc/prometheus/alertmanager_templates/
+debian/alertmanager.yml etc/prometheus/
+template/default.tmpl   usr/share/prometheus/alertmanager
+ui/app/*                usr/share/prometheus/alertmanager/ui/app
+ui/lib/routing-tree.js  usr/share/prometheus/alertmanager/ui/lib

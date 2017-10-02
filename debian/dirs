@@ -1,0 +1,7 @@
+etc/prometheus
+etc/prometheus/alertmanager_templates
+usr/bin
+usr/share/prometheus/alertmanager/ui/app
+usr/share/prometheus/alertmanager/ui/lib
+var/lib/prometheus/alertmanager
+var/log/prometheus

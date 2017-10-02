@@ -1,0 +1,4 @@
+# Golang links all libraries statically.
+prometheus-alertmanager: embedded-library usr/bin/prometheus-alertmanager: libyaml
+# The Go compiler is currently unable to produce read-only relocations
+prometheus-alertmanager: hardening-no-relro usr/bin/prometheus-alertmanager

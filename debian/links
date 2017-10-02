@@ -1,0 +1,4 @@
+usr/share/javascript/angular.js usr/share/prometheus/alertmanager/ui/lib/angular.js
+usr/share/javascript/d3         usr/share/prometheus/alertmanager/ui/lib/d3
+usr/share/javascript/jquery     usr/share/prometheus/alertmanager/ui/lib/jquery
+usr/share/javascript/moment     usr/share/prometheus/alertmanager/ui/lib/moment

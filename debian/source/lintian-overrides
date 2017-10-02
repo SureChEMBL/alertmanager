@@ -1,0 +1,2 @@
+# Long lines in source code.
+prometheus-alertmanager source: source-is-missing ui/lib/angular-moment/tests.js line length is 745 characters (>512)

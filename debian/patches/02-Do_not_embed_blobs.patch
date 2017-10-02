@@ -1,0 +1,168 @@
+Description: Do not embed web resources in the binary.
+ Upstream is interested in keeping the resources embedded, this patch is to
+ comply with Debian policy.
+Forwarded: not-needed
+Author: Martín Ferrari <tincho@debian.org>
+Last-Update: 2016-07-12
+
+--- a/ui/web.go
++++ b/ui/web.go
+@@ -14,57 +14,28 @@
+ package ui
+ 
+ import (
+-	"bytes"
+-	"io"
+ 	"net/http"
+ 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
+ 	"path/filepath"
+ 
+ 	"github.com/prometheus/client_golang/prometheus"
+-	"github.com/prometheus/common/log"
+ 	"github.com/prometheus/common/route"
+ )
+ 
+-func serveAsset(w http.ResponseWriter, req *http.Request, fp string) {
+-	info, err := AssetInfo(fp)
+-	if err != nil {
+-		log.Warn("Could not get file: ", err)
+-		w.WriteHeader(http.StatusNotFound)
+-		return
+-	}
+-	file, err := Asset(fp)
+-	if err != nil {
+-		if err != io.EOF {
+-			log.With("file", fp).Warn("Could not get file: ", err)
+-		}
+-		w.WriteHeader(http.StatusNotFound)
+-		return
+-	}
+-
+-	http.ServeContent(w, req, info.Name(), info.ModTime(), bytes.NewReader(file))
+-}
+-
+ // Register registers handlers to serve files for the web interface.
+-func Register(r *route.Router, reloadCh chan<- struct{}) {
++func Register(r *route.Router, reloadCh chan<- struct{}, localAssets string) {
+ 	ihf := prometheus.InstrumentHandlerFunc
+ 
+ 	r.Get("/app/*filepath", ihf("app_files",
+-		func(w http.ResponseWriter, req *http.Request) {
+-			fp := route.Param(req.Context(), "filepath")
+-			serveAsset(w, req, filepath.Join("ui/app", fp))
+-		},
+-	))
++		route.FileServe(filepath.Join(localAssets, "ui/app"))))
+ 	r.Get("/lib/*filepath", ihf("lib_files",
+-		func(w http.ResponseWriter, req *http.Request) {
+-			fp := route.Param(req.Context(), "filepath")
+-			serveAsset(w, req, filepath.Join("ui/lib", fp))
+-		},
+-	))
++		route.FileServe(filepath.Join(localAssets, "ui/lib"))))
+ 
+ 	r.Get("/metrics", prometheus.Handler().ServeHTTP)
+ 
+ 	r.Get("/", ihf("index", func(w http.ResponseWriter, req *http.Request) {
+-		serveAsset(w, req, "ui/app/index.html")
++		http.ServeFile(w, req,
++			filepath.Join(localAssets, "ui/app/index.html"))
+ 	}))
+ 
+ 	r.Post("/-/reload", func(w http.ResponseWriter, req *http.Request) {
+--- a/template/template.go
++++ b/template/template.go
+@@ -15,6 +15,7 @@
+ 
+ import (
+ 	"bytes"
++	"io/ioutil"
+ 	"net/url"
+ 	"path/filepath"
+ 	"regexp"
+@@ -27,7 +28,6 @@
+ 
+ 	"github.com/prometheus/common/model"
+ 
+-	"github.com/prometheus/alertmanager/template/internal/deftmpl"
+ 	"github.com/prometheus/alertmanager/types"
+ )
+ 
+@@ -41,7 +41,7 @@
+ 
+ // FromGlobs calls ParseGlob on all path globs provided and returns the
+ // resulting Template.
+-func FromGlobs(paths ...string) (*Template, error) {
++func FromGlobs(defaultTemplate string, paths ...string) (*Template, error) {
+ 	t := &Template{
+ 		text: tmpltext.New("").Option("missingkey=zero"),
+ 		html: tmplhtml.New("").Option("missingkey=zero"),
+@@ -51,7 +51,7 @@
+ 	t.text = t.text.Funcs(tmpltext.FuncMap(DefaultFuncs))
+ 	t.html = t.html.Funcs(tmplhtml.FuncMap(DefaultFuncs))
+ 
+-	b, err := deftmpl.Asset("template/default.tmpl")
++	b, err := ioutil.ReadFile(defaultTemplate)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+--- a/cmd/alertmanager/main.go
++++ b/cmd/alertmanager/main.go
+@@ -82,6 +82,7 @@
+ 
+ 		configFile = flag.String("config.file", "alertmanager.yml", "Alertmanager configuration file name.")
+ 		dataDir    = flag.String("storage.path", "data/", "Base path for data storage.")
++		localAssets = flag.String("web.local-assets", "/usr/share/prometheus/alertmanager/", "Path to static assets/templates directory.")
+ 		retention  = flag.Duration("data.retention", 5*24*time.Hour, "How long to keep data for.")
+ 
+ 		externalURL   = flag.String("web.external-url", "", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
+@@ -227,7 +228,7 @@
+ 			return err
+ 		}
+ 
+-		tmpl, err = template.FromGlobs(conf.Templates...)
++		tmpl, err = template.FromGlobs(filepath.Join(*localAssets, "default.tmpl"), conf.Templates...)
+ 		if err != nil {
+ 			return err
+ 		}
+@@ -261,7 +262,7 @@
+ 	router := route.New()
+ 
+ 	webReload := make(chan struct{})
+-	ui.Register(router.WithPrefix(amURL.Path), webReload)
++	ui.Register(router.WithPrefix(amURL.Path), webReload, *localAssets)
+ 	apiv.Register(router.WithPrefix(path.Join(amURL.Path, "/api")))
+ 
+ 	log.Infoln("Listening on", *listenAddress)
+--- a/ui/app/partials/status.html
++++ b/ui/app/partials/status.html
+@@ -31,6 +31,6 @@
+       </div>
+     </div>
+   </div>
+-  <script src="lib/d3.v3.min.js"></script>
++  <script src="lib/d3/d3.min.js"></script>
+   <script src="lib/routing-tree.js"></script>
+ </div>
+--- a/ui/app/index.html
++++ b/ui/app/index.html
+@@ -1,13 +1,13 @@
+ <!DOCTYPE html>
+ <html lang="en" ng-app="am">
+ <head>
+-	<script src="lib/jquery.min.js"></script>
+-	<script src="lib/moment.min.js"></script>
++	<script src="lib/jquery/jquery.min.js"></script>
++	<script src="lib/moment/moment.min.js"></script>
+ 
+-	<script src="lib/angular.min.js"></script>
+-	<script src="lib/angular-sanitize.min.js"></script>
+-	<script src="lib/angular-route.min.js"></script>
+-	<script src="lib/angular-resource.min.js"></script>
++	<script src="lib/angular.js/angular.min.js"></script>
++	<script src="lib/angular.js/angular-sanitize.min.js"></script>
++	<script src="lib/angular.js/angular-route.min.js"></script>
++	<script src="lib/angular.js/angular-resource.min.js"></script>
+ 	<script src="lib/angular-moment.min.js"></script>
+ 
+ 	<script src="app/js/app.js"></script>

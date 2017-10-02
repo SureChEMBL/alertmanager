@@ -1,0 +1,75 @@
+#!/usr/bin/make -f
+include /usr/share/dpkg/pkg-info.mk
+
+export DH_VERBOSE=1
+export DH_GOPKG := github.com/prometheus/alertmanager
+
+# Acceptance tests need to be run separately.
+export DH_GOLANG_EXCLUDES := $(DH_GOPKG)/test/acceptance
+export DH_GOLANG_INSTALL_EXTRA := template/default.tmpl
+
+BUILDDIR := $(CURDIR)/build
+METAPKG := github.com/prometheus/common
+BINPKG := prometheus-alertmanager
+LIBPKG := golang-github-prometheus-alertmanager-dev
+
+BRANCH     := debian/sid
+USER       := pkg-go-maintainers@lists.alioth.debian.org
+BUILD_DATE := $(shell date --utc --date='@$(SOURCE_DATE_EPOCH)' \
+    +%Y%m%d-%H:%M:%S)
+GO_VERSION := $(shell go version | sed 's/go version \(\S*\).*/\1/')
+GCCGO      := $(strip $(shell go version | grep gccgo))
+BUILDFLAGS := -ldflags \
+  " -X $(METAPKG)/version.Version=$(DEB_VERSION_UPSTREAM)\
+    -X $(METAPKG)/version.Revision=$(DEB_VERSION)\
+    -X $(METAPKG)/version.Branch=$(BRANCH)\
+    -X $(METAPKG)/version.BuildUser=$(USER)\
+    -X $(METAPKG)/version.BuildDate=$(BUILD_DATE)\
+    -X $(METAPKG)/version.GoVersion=$(GO_VERSION)"
+
+%:
+	dh $@ --buildsystem=golang --with=golang --builddirectory=$(BUILDDIR)
+
+DEB_HOST_ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
+
+ifneq ($(GCCGO),)
+# Workaround until #872402 is fixed.
+ifeq ($(findstring mips,$(DEB_HOST_ARCH)),mips)
+# mipsel => mipsle, mips64el => mips64le
+BUILDFLAGS += -tags $(DEB_HOST_ARCH:el=le)
+endif
+# Gccgo ignores vendoring.
+API_PATH := github.com/prometheus/client_golang/api/alertmanager
+override_dh_auto_configure:
+	mkdir -vp `dirname $(BUILDDIR)/src/$(API_PATH)`
+	dh_auto_configure
+	mv -v $(BUILDDIR)/src/$(DH_GOPKG)/vendor/$(API_PATH) \
+		$(BUILDDIR)/src/$(API_PATH)
+endif
+
+override_dh_auto_build:
+	dh_auto_build -- $(BUILDFLAGS)
+#	# Build UI dependencies.
+	mkdir -vp $(BUILDDIR)/uideps
+	uglifyjs --mangle --compress \
+	    < ui/lib/angular-moment/angular-moment.js \
+	    > $(BUILDDIR)/uideps/angular-moment.min.js
+	python2-pyscss ui/lib/kube/src/kube.scss \
+	    > $(BUILDDIR)/uideps/kube.min.css
+
+override_dh_auto_test:
+	dh_auto_build -- $(BUILDFLAGS)
+	# Don't abort if acceptance tests fail, as they are too sensitive to
+	# timing issues.
+	GOPATH=$(BUILDDIR) go test -v $(DH_GOLANG_EXCLUDES) || true
+
+override_dh_auto_install:
+	cp -v $(BUILDDIR)/bin/alertmanager debian/$(BINPKG)/usr/bin/$(BINPKG)
+	mkdir -vp debian/$(LIBPKG)/usr/share/gocode/src/$(DH_GOPKG)
+	cp -vaT $(BUILDDIR)/src/$(DH_GOPKG) \
+            debian/$(LIBPKG)/usr/share/gocode/src/$(DH_GOPKG)
+ifneq ($(GCCGO),)
+	mkdir -vp debian/$(LIBPKG)/usr/share/gocode/src/$(API_PATH)
+	cp -vaT $(BUILDDIR)/src/$(API_PATH) \
+            debian/$(LIBPKG)/usr/share/gocode/src/$(API_PATH)
+endif

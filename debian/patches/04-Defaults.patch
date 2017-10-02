@@ -1,0 +1,18 @@
+Description: Change default paths to match Debian packaging
+Forwarded: not-needed
+Author: Martín Ferrari <tincho@debian.org>
+Last-Update: 2016-07-12
+
+--- a/cmd/alertmanager/main.go
++++ b/cmd/alertmanager/main.go
+@@ -80,8 +80,8 @@
+ 	var (
+ 		showVersion = flag.Bool("version", false, "Print version information.")
+ 
+-		configFile = flag.String("config.file", "alertmanager.yml", "Alertmanager configuration file name.")
+-		dataDir    = flag.String("storage.path", "data/", "Base path for data storage.")
++		configFile = flag.String("config.file", "/etc/prometheus/alertmanager.yml", "Alertmanager configuration file name.")
++		dataDir    = flag.String("storage.path", "/var/lib/prometheus/alertmanager/", "Base path for data storage.")
+ 		localAssets = flag.String("web.local-assets", "/usr/share/prometheus/alertmanager/", "Path to static assets/templates directory.")
+ 		retention  = flag.Duration("data.retention", 5*24*time.Hour, "How long to keep data for.")
+ 
