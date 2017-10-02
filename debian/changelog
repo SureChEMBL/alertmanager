@@ -1,4 +1,4 @@
-prometheus-alertmanager (0.6.2+ds-3) UNRELEASED; urgency=medium
+prometheus-alertmanager (0.6.2+ds-3) unstable; urgency=medium
 
   * debian/control: Update Standards-Version (no changes).
   * Automatic fixes to control and copyright from cme.
